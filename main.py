@@ -25,39 +25,23 @@ class FinanceTracker(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Finance Tracker")
-        self.setGeometry(100, 100, 1000, 600)
-
-        self.tabs = {}  # Dictionary to hold tab widgets
+        self.setGeometry(100, 100, 1100, 650)
+        self.tabs = {}  # section_name: {"table": table}
         self.init_ui()
 
     def init_ui(self):
-        # Central widget and layout
-        self.tabs_widget = QTabWidget()
         central_widget = QWidget()
-        self.central_layout = QVBoxLayout()  # Store layout as instance variable
-
-        # Add tab widget to central layout
-        self.central_layout.addWidget(self.tabs_widget)
-        central_widget.setLayout(self.central_layout)
         self.setCentralWidget(central_widget)
+        self.main_layout = QVBoxLayout()
+        central_widget.setLayout(self.main_layout)
 
-        # Tab section names
-        sections = ["Savings", "Income Pending", "Loans", "Payments Pending"]
-        for section in sections:
-            self.add_section(section)
-
-        # Inputs for name, amount, and date
+        # Input fields
         self.name_input = QLineEdit()
-        self.name_input.setPlaceholderText("Enter name")
-
         self.amount_input = QLineEdit()
-        self.amount_input.setPlaceholderText("Enter amount")
-
         self.date_input = QDateEdit()
         self.date_input.setCalendarPopup(True)
         self.date_input.setDate(QDate.currentDate())
 
-        # Layout for input fields
         input_layout = QHBoxLayout()
         input_layout.addWidget(QLabel("Name:"))
         input_layout.addWidget(self.name_input)
@@ -65,231 +49,214 @@ class FinanceTracker(QMainWindow):
         input_layout.addWidget(self.amount_input)
         input_layout.addWidget(QLabel("Date:"))
         input_layout.addWidget(self.date_input)
+        self.main_layout.addLayout(input_layout)
 
-        # Add buttons to each section tab
-        for section in sections:
-            tab = self.tabs[section]
-            button_layout = QHBoxLayout()
+        # Action buttons
+        btn_layout = QHBoxLayout()
+        self.add_btn = QPushButton("Add")
+        self.edit_btn = QPushButton("Edit")
+        self.delete_btn = QPushButton("Delete")
+        btn_layout.addWidget(self.add_btn)
+        btn_layout.addWidget(self.edit_btn)
+        btn_layout.addWidget(self.delete_btn)
+        self.main_layout.addLayout(btn_layout)
 
-            add_button = QPushButton("Add")
-            add_button.clicked.connect(lambda _, s=section: self.add_entry(s))
-            button_layout.addWidget(add_button)
+        self.add_btn.clicked.connect(self.handle_add)
+        self.edit_btn.clicked.connect(self.handle_edit)
+        self.delete_btn.clicked.connect(self.handle_delete)
 
-            edit_button = QPushButton("Edit")
-            edit_button.clicked.connect(lambda _, s=section: self.edit_entry(s))
-            button_layout.addWidget(edit_button)
+        # Tabs
+        self.tab_widget = QTabWidget()
+        self.main_layout.addWidget(self.tab_widget)
 
-            delete_button = QPushButton("Delete")
-            delete_button.clicked.connect(lambda _, s=section: self.delete_entry(s))
-            button_layout.addWidget(delete_button)
+        for section in ["Savings", "Income Pending", "Loans", "Payments Pending"]:
+            self.add_tab(section)
 
-            # Add input and buttons to the tab's layout
-            tab["layout"].addLayout(input_layout)
-            tab["layout"].addLayout(button_layout)
+        # File/chart buttons
+        file_layout = QHBoxLayout()
+        export_csv_btn = QPushButton("Export CSV")
+        export_excel_btn = QPushButton("Export Excel")
+        import_csv_btn = QPushButton("Import CSV")
+        import_excel_btn = QPushButton("Import Excel")
+        chart_btn = QPushButton("Show Chart")
 
-        # Add export/import/chart buttons below the tabs
-        self.add_export_import_buttons()
+        export_csv_btn.clicked.connect(self.export_csv)
+        export_excel_btn.clicked.connect(self.export_excel)
+        import_csv_btn.clicked.connect(self.import_csv)
+        import_excel_btn.clicked.connect(self.import_excel)
+        chart_btn.clicked.connect(self.show_chart)
 
-    def add_section(self, section_name):
+        file_layout.addWidget(export_csv_btn)
+        file_layout.addWidget(export_excel_btn)
+        file_layout.addWidget(import_csv_btn)
+        file_layout.addWidget(import_excel_btn)
+        file_layout.addWidget(chart_btn)
+        self.main_layout.addLayout(file_layout)
+
+    def add_tab(self, name):
         tab = QWidget()
         layout = QVBoxLayout()
         table = QTableWidget()
         table.setColumnCount(3)
         table.setHorizontalHeaderLabels(["Name", "Amount (LKR)", "Date"])
-
         layout.addWidget(table)
         tab.setLayout(layout)
+        self.tab_widget.addTab(tab, name)
+        self.tabs[name] = {"table": table}
 
-        self.tabs_widget.addTab(tab, section_name)
-        self.tabs[section_name] = {"tab": tab, "layout": layout, "table": table}
+    def get_current_table(self):
+        section = self.tab_widget.tabText(self.tab_widget.currentIndex())
+        return self.tabs[section]["table"]
 
-    def add_entry(self, section):
-        name = self.name_input.text()
-        amount = self.amount_input.text()
+    def handle_add(self):
+        name = self.name_input.text().strip()
+        amount = self.amount_input.text().strip()
         date = self.date_input.date().toString("yyyy-MM-dd")
 
         if not name or not amount:
-            QMessageBox.warning(self, "Input Error", "Please enter all fields.")
+            QMessageBox.warning(self, "Input Error", "Please fill all fields.")
             return
-
         try:
             float(amount)
         except ValueError:
             QMessageBox.warning(self, "Input Error", "Amount must be a number.")
             return
 
-        table = self.tabs[section]["table"]
+        table = self.get_current_table()
         row = table.rowCount()
         table.insertRow(row)
         table.setItem(row, 0, QTableWidgetItem(name))
         table.setItem(row, 1, QTableWidgetItem(amount))
         table.setItem(row, 2, QTableWidgetItem(date))
-
         self.clear_inputs()
 
-    def edit_entry(self, section):
-        table = self.tabs[section]["table"]
-        selected = table.currentRow()
-        if selected < 0:
+    def handle_edit(self):
+        table = self.get_current_table()
+        row = table.currentRow()
+        if row < 0:
             QMessageBox.warning(self, "Edit Error", "Select a row to edit.")
             return
 
-        name = self.name_input.text()
-        amount = self.amount_input.text()
+        name = self.name_input.text().strip()
+        amount = self.amount_input.text().strip()
         date = self.date_input.date().toString("yyyy-MM-dd")
 
         if not name or not amount:
-            QMessageBox.warning(self, "Input Error", "Please enter all fields.")
+            QMessageBox.warning(self, "Input Error", "Please fill all fields.")
             return
-
         try:
             float(amount)
         except ValueError:
             QMessageBox.warning(self, "Input Error", "Amount must be a number.")
             return
 
-        table.setItem(selected, 0, QTableWidgetItem(name))
-        table.setItem(selected, 1, QTableWidgetItem(amount))
-        table.setItem(selected, 2, QTableWidgetItem(date))
-
+        table.setItem(row, 0, QTableWidgetItem(name))
+        table.setItem(row, 1, QTableWidgetItem(amount))
+        table.setItem(row, 2, QTableWidgetItem(date))
         self.clear_inputs()
 
-    def delete_entry(self, section):
-        table = self.tabs[section]["table"]
-        selected = table.currentRow()
-        if selected >= 0:
-            table.removeRow(selected)
+    def handle_delete(self):
+        table = self.get_current_table()
+        row = table.currentRow()
+        if row >= 0:
+            table.removeRow(row)
 
     def clear_inputs(self):
         self.name_input.clear()
         self.amount_input.clear()
         self.date_input.setDate(QDate.currentDate())
 
-    def add_export_import_buttons(self):
-        button_layout = QHBoxLayout()
-
-        export_csv_btn = QPushButton("Export CSV")
-        export_csv_btn.clicked.connect(self.export_csv)
-        button_layout.addWidget(export_csv_btn)
-
-        export_excel_btn = QPushButton("Export Excel")
-        export_excel_btn.clicked.connect(self.export_excel)
-        button_layout.addWidget(export_excel_btn)
-
-        import_csv_btn = QPushButton("Import CSV")
-        import_csv_btn.clicked.connect(self.import_csv)
-        button_layout.addWidget(import_csv_btn)
-
-        import_excel_btn = QPushButton("Import Excel")
-        import_excel_btn.clicked.connect(self.import_excel)
-        button_layout.addWidget(import_excel_btn)
-
-        chart_btn = QPushButton("Show Chart")
-        chart_btn.clicked.connect(self.show_chart)
-        button_layout.addWidget(chart_btn)
-
-        # ✅ Add this layout to the main layout, not the tab widget!
-        self.central_layout.addLayout(button_layout)
-
     def export_csv(self):
-        file_path, _ = QFileDialog.getSaveFileName(
+        path, _ = QFileDialog.getSaveFileName(
             self, "Export CSV", "", "CSV Files (*.csv)"
         )
-        if not file_path:
+        if not path:
             return
-
-        all_data = []
-        for section, info in self.tabs.items():
-            table = info["table"]
-            for row in range(table.rowCount()):
-                row_data = [
-                    section,
-                    table.item(row, 0).text(),
-                    table.item(row, 1).text(),
-                    table.item(row, 2).text(),
-                ]
-                all_data.append(row_data)
-
-        with open(file_path, "w", newline="") as f:
+        with open(path, "w", newline="") as f:
             writer = csv.writer(f)
             writer.writerow(["Section", "Name", "Amount", "Date"])
-            writer.writerows(all_data)
+            for section, data in self.tabs.items():
+                table = data["table"]
+                for row in range(table.rowCount()):
+                    writer.writerow(
+                        [
+                            section,
+                            table.item(row, 0).text(),
+                            table.item(row, 1).text(),
+                            table.item(row, 2).text(),
+                        ]
+                    )
 
     def export_excel(self):
-        file_path, _ = QFileDialog.getSaveFileName(
+        path, _ = QFileDialog.getSaveFileName(
             self, "Export Excel", "", "Excel Files (*.xlsx)"
         )
-        if not file_path:
+        if not path:
             return
-
-        all_data = []
-        for section, info in self.tabs.items():
-            table = info["table"]
-            for row in range(table.rowCount()):
-                row_data = {
-                    "Section": section,
-                    "Name": table.item(row, 0).text(),
-                    "Amount": float(table.item(row, 1).text()),
-                    "Date": table.item(row, 2).text(),
-                }
-                all_data.append(row_data)
-
-        df = pd.DataFrame(all_data)
-        df.to_excel(file_path, index=False)
+        rows = []
+        for section, data in self.tabs.items():
+            table = data["table"]
+            for r in range(table.rowCount()):
+                rows.append(
+                    {
+                        "Section": section,
+                        "Name": table.item(r, 0).text(),
+                        "Amount": float(table.item(r, 1).text()),
+                        "Date": table.item(r, 2).text(),
+                    }
+                )
+        df = pd.DataFrame(rows)
+        df.to_excel(path, index=False)
 
     def import_csv(self):
-        file_path, _ = QFileDialog.getOpenFileName(
+        path, _ = QFileDialog.getOpenFileName(
             self, "Import CSV", "", "CSV Files (*.csv)"
         )
-        if not file_path:
+        if not path:
             return
-
-        with open(file_path, "r") as f:
+        with open(path, newline="") as f:
             reader = csv.DictReader(f)
             for row in reader:
                 section = row["Section"]
                 if section in self.tabs:
                     table = self.tabs[section]["table"]
-                    row_pos = table.rowCount()
-                    table.insertRow(row_pos)
-                    table.setItem(row_pos, 0, QTableWidgetItem(row["Name"]))
-                    table.setItem(row_pos, 1, QTableWidgetItem(row["Amount"]))
-                    table.setItem(row_pos, 2, QTableWidgetItem(row["Date"]))
+                    r = table.rowCount()
+                    table.insertRow(r)
+                    table.setItem(r, 0, QTableWidgetItem(row["Name"]))
+                    table.setItem(r, 1, QTableWidgetItem(row["Amount"]))
+                    table.setItem(r, 2, QTableWidgetItem(row["Date"]))
 
     def import_excel(self):
-        file_path, _ = QFileDialog.getOpenFileName(
+        path, _ = QFileDialog.getOpenFileName(
             self, "Import Excel", "", "Excel Files (*.xlsx)"
         )
-        if not file_path:
+        if not path:
             return
-
-        df = pd.read_excel(file_path)
+        df = pd.read_excel(path)
         for _, row in df.iterrows():
             section = row["Section"]
             if section in self.tabs:
                 table = self.tabs[section]["table"]
-                row_pos = table.rowCount()
-                table.insertRow(row_pos)
-                table.setItem(row_pos, 0, QTableWidgetItem(str(row["Name"])))
-                table.setItem(row_pos, 1, QTableWidgetItem(str(row["Amount"])))
-                table.setItem(row_pos, 2, QTableWidgetItem(str(row["Date"])))
+                r = table.rowCount()
+                table.insertRow(r)
+                table.setItem(r, 0, QTableWidgetItem(str(row["Name"])))
+                table.setItem(r, 1, QTableWidgetItem(str(row["Amount"])))
+                table.setItem(r, 2, QTableWidgetItem(str(row["Date"])))
 
     def show_chart(self):
-        data = {}
-        for section, info in self.tabs.items():
-            total = 0.0
-            table = info["table"]
-            for row in range(table.rowCount()):
+        totals = {}
+        for section, data in self.tabs.items():
+            table = data["table"]
+            total = 0
+            for r in range(table.rowCount()):
                 try:
-                    amount = float(table.item(row, 1).text())
-                    total += amount
+                    total += float(table.item(r, 1).text())
                 except:
                     continue
-            data[section] = total
+            totals[section] = total
 
-        # Create pie chart
         plt.figure(figsize=(7, 7))
-        plt.pie(data.values(), labels=data.keys(), autopct="%1.1f%%")
+        plt.pie(totals.values(), labels=totals.keys(), autopct="%1.1f%%")
         plt.title("Finance Distribution")
         plt.show()
 
