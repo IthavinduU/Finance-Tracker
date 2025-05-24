@@ -1,25 +1,16 @@
 import sys
+import os
 import csv
 import pandas as pd
 from PySide6.QtWidgets import (
-    QApplication,
-    QMainWindow,
-    QWidget,
-    QVBoxLayout,
-    QHBoxLayout,
-    QPushButton,
-    QTabWidget,
-    QTableWidget,
-    QTableWidgetItem,
-    QLabel,
-    QLineEdit,
-    QDateEdit,
-    QFileDialog,
-    QMessageBox,
+    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+    QPushButton, QTabWidget, QTableWidget, QTableWidgetItem,
+    QLabel, QLineEdit, QDateEdit, QFileDialog, QMessageBox
 )
 from PySide6.QtCore import QDate
 import matplotlib.pyplot as plt
 
+DATA_FILE = os.path.join(os.path.dirname(__file__), "data.csv")
 
 class FinanceTracker(QMainWindow):
     def __init__(self):
@@ -28,6 +19,7 @@ class FinanceTracker(QMainWindow):
         self.setGeometry(100, 100, 1100, 650)
         self.tabs = {}  # section_name: {"table": table}
         self.init_ui()
+        self.load_data()  # Load from data.csv on startup
 
     def init_ui(self):
         central_widget = QWidget()
@@ -35,7 +27,6 @@ class FinanceTracker(QMainWindow):
         self.main_layout = QVBoxLayout()
         central_widget.setLayout(self.main_layout)
 
-        # Input fields
         self.name_input = QLineEdit()
         self.amount_input = QLineEdit()
         self.date_input = QDateEdit()
@@ -51,7 +42,6 @@ class FinanceTracker(QMainWindow):
         input_layout.addWidget(self.date_input)
         self.main_layout.addLayout(input_layout)
 
-        # Action buttons
         btn_layout = QHBoxLayout()
         self.add_btn = QPushButton("Add")
         self.edit_btn = QPushButton("Edit")
@@ -65,14 +55,12 @@ class FinanceTracker(QMainWindow):
         self.edit_btn.clicked.connect(self.handle_edit)
         self.delete_btn.clicked.connect(self.handle_delete)
 
-        # Tabs
         self.tab_widget = QTabWidget()
         self.main_layout.addWidget(self.tab_widget)
 
         for section in ["Savings", "Income Pending", "Loans", "Payments Pending"]:
             self.add_tab(section)
 
-        # File/chart buttons
         file_layout = QHBoxLayout()
         export_csv_btn = QPushButton("Export CSV")
         export_excel_btn = QPushButton("Export Excel")
@@ -106,7 +94,7 @@ class FinanceTracker(QMainWindow):
 
     def get_current_table(self):
         section = self.tab_widget.tabText(self.tab_widget.currentIndex())
-        return self.tabs[section]["table"]
+        return section, self.tabs[section]["table"]
 
     def handle_add(self):
         name = self.name_input.text().strip()
@@ -122,16 +110,17 @@ class FinanceTracker(QMainWindow):
             QMessageBox.warning(self, "Input Error", "Amount must be a number.")
             return
 
-        table = self.get_current_table()
+        section, table = self.get_current_table()
         row = table.rowCount()
         table.insertRow(row)
         table.setItem(row, 0, QTableWidgetItem(name))
         table.setItem(row, 1, QTableWidgetItem(amount))
         table.setItem(row, 2, QTableWidgetItem(date))
         self.clear_inputs()
+        self.save_data()
 
     def handle_edit(self):
-        table = self.get_current_table()
+        section, table = self.get_current_table()
         row = table.currentRow()
         if row < 0:
             QMessageBox.warning(self, "Edit Error", "Select a row to edit.")
@@ -154,22 +143,57 @@ class FinanceTracker(QMainWindow):
         table.setItem(row, 1, QTableWidgetItem(amount))
         table.setItem(row, 2, QTableWidgetItem(date))
         self.clear_inputs()
+        self.save_data()
 
     def handle_delete(self):
-        table = self.get_current_table()
+        _, table = self.get_current_table()
         row = table.currentRow()
         if row >= 0:
             table.removeRow(row)
+            self.save_data()
 
     def clear_inputs(self):
         self.name_input.clear()
         self.amount_input.clear()
         self.date_input.setDate(QDate.currentDate())
 
+    def save_data(self):
+        try:
+            with open(DATA_FILE, "w", newline="") as f:
+                writer = csv.writer(f)
+                writer.writerow(["Section", "Name", "Amount", "Date"])
+                for section, data in self.tabs.items():
+                    table = data["table"]
+                    for row in range(table.rowCount()):
+                        writer.writerow([
+                            section,
+                            table.item(row, 0).text(),
+                            table.item(row, 1).text(),
+                            table.item(row, 2).text()
+                        ])
+        except Exception as e:
+            QMessageBox.critical(self, "Save Error", str(e))
+
+    def load_data(self):
+        if not os.path.exists(DATA_FILE):
+            return
+        try:
+            with open(DATA_FILE, newline="") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    section = row["Section"]
+                    if section in self.tabs:
+                        table = self.tabs[section]["table"]
+                        r = table.rowCount()
+                        table.insertRow(r)
+                        table.setItem(r, 0, QTableWidgetItem(row["Name"]))
+                        table.setItem(r, 1, QTableWidgetItem(row["Amount"]))
+                        table.setItem(r, 2, QTableWidgetItem(row["Date"]))
+        except Exception as e:
+            QMessageBox.critical(self, "Load Error", str(e))
+
     def export_csv(self):
-        path, _ = QFileDialog.getSaveFileName(
-            self, "Export CSV", "", "CSV Files (*.csv)"
-        )
+        path, _ = QFileDialog.getSaveFileName(self, "Export CSV", "", "CSV Files (*.csv)")
         if not path:
             return
         with open(path, "w", newline="") as f:
@@ -178,40 +202,32 @@ class FinanceTracker(QMainWindow):
             for section, data in self.tabs.items():
                 table = data["table"]
                 for row in range(table.rowCount()):
-                    writer.writerow(
-                        [
-                            section,
-                            table.item(row, 0).text(),
-                            table.item(row, 1).text(),
-                            table.item(row, 2).text(),
-                        ]
-                    )
+                    writer.writerow([
+                        section,
+                        table.item(row, 0).text(),
+                        table.item(row, 1).text(),
+                        table.item(row, 2).text()
+                    ])
 
     def export_excel(self):
-        path, _ = QFileDialog.getSaveFileName(
-            self, "Export Excel", "", "Excel Files (*.xlsx)"
-        )
+        path, _ = QFileDialog.getSaveFileName(self, "Export Excel", "", "Excel Files (*.xlsx)")
         if not path:
             return
         rows = []
         for section, data in self.tabs.items():
             table = data["table"]
             for r in range(table.rowCount()):
-                rows.append(
-                    {
-                        "Section": section,
-                        "Name": table.item(r, 0).text(),
-                        "Amount": float(table.item(r, 1).text()),
-                        "Date": table.item(r, 2).text(),
-                    }
-                )
+                rows.append({
+                    "Section": section,
+                    "Name": table.item(r, 0).text(),
+                    "Amount": float(table.item(r, 1).text()),
+                    "Date": table.item(r, 2).text()
+                })
         df = pd.DataFrame(rows)
         df.to_excel(path, index=False)
 
     def import_csv(self):
-        path, _ = QFileDialog.getOpenFileName(
-            self, "Import CSV", "", "CSV Files (*.csv)"
-        )
+        path, _ = QFileDialog.getOpenFileName(self, "Import CSV", "", "CSV Files (*.csv)")
         if not path:
             return
         with open(path, newline="") as f:
@@ -225,11 +241,10 @@ class FinanceTracker(QMainWindow):
                     table.setItem(r, 0, QTableWidgetItem(row["Name"]))
                     table.setItem(r, 1, QTableWidgetItem(row["Amount"]))
                     table.setItem(r, 2, QTableWidgetItem(row["Date"]))
+        self.save_data()
 
     def import_excel(self):
-        path, _ = QFileDialog.getOpenFileName(
-            self, "Import Excel", "", "Excel Files (*.xlsx)"
-        )
+        path, _ = QFileDialog.getOpenFileName(self, "Import Excel", "", "Excel Files (*.xlsx)")
         if not path:
             return
         df = pd.read_excel(path)
@@ -242,6 +257,7 @@ class FinanceTracker(QMainWindow):
                 table.setItem(r, 0, QTableWidgetItem(str(row["Name"])))
                 table.setItem(r, 1, QTableWidgetItem(str(row["Amount"])))
                 table.setItem(r, 2, QTableWidgetItem(str(row["Date"])))
+        self.save_data()
 
     def show_chart(self):
         totals = {}
